@@ -6,6 +6,7 @@ import androidx.compose.foundation.gestures.TransformableState
 import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -23,28 +24,43 @@ private const val MIN_VISIBLE_COUNT_BARS = 20
 
 @Composable
 fun Terminal(bars: List<Bar>) {
+
     var visibleBarsCount by remember {
-        mutableIntStateOf(500)
-    }
-
-    var barWidth by remember {
-        mutableFloatStateOf(0f)
-    }
-
-    var scrolledBy by remember {
-        mutableFloatStateOf(0f)
+        mutableIntStateOf(100)
     }
 
     var terminalWidth by remember {
         mutableFloatStateOf(0f)
     }
 
+    val barWidth by remember {
+        //Расчитывает стейт в зависиости от условий
+        //И когда один из этих 2-х стейтов измениться, произойдет перерасчет и новое значение будет
+        //лежать в barWidth
+        derivedStateOf {
+            terminalWidth / visibleBarsCount
+        }
+    }
+
+    var scrolledBy by remember {
+        mutableFloatStateOf(0f)
+    }
+
+    val visibleBars by remember {
+        derivedStateOf {
+            val startIndex = (scrolledBy / barWidth).roundToInt().coerceAtLeast(0)
+            val endIndex = (startIndex + visibleBarsCount).coerceAtMost(bars.size)
+            bars.subList(startIndex,endIndex)
+        }
+    }
+
+
     val transformableState = TransformableState { zoomChange, panChange, _ ->
         visibleBarsCount = (visibleBarsCount / zoomChange).roundToInt()
             .coerceIn(MIN_VISIBLE_COUNT_BARS, bars.size)
 
         scrolledBy = (scrolledBy + panChange.x)
-            .coerceAtLeast(0f)
+            .coerceAtLeast(-15f)
             .coerceAtMost(barWidth * bars.size - terminalWidth)
 
     }
@@ -56,9 +72,8 @@ fun Terminal(bars: List<Bar>) {
             .transformable(transformableState)
     ) {
         terminalWidth = size.width
-        val max = bars.maxOf { it.high }
-        val min = bars.minOf { it.low }
-        barWidth = size.width / visibleBarsCount
+        val max = visibleBars.maxOf { it.high }
+        val min = visibleBars.minOf { it.low }
         val pxPerPoint = size.height / (max - min)
         translate(left = scrolledBy) {
             bars.forEachIndexed { index, bar ->
