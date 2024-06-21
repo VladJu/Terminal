@@ -34,9 +34,6 @@ fun Terminal(bars: List<Bar>) {
     }
 
     val barWidth by remember {
-        //Расчитывает стейт в зависиости от условий
-        //И когда один из этих 2-х стейтов измениться, произойдет перерасчет и новое значение будет
-        //лежать в barWidth
         derivedStateOf {
             terminalWidth / visibleBarsCount
         }
