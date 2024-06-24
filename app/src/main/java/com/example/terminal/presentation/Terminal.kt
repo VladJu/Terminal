@@ -5,11 +5,20 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.State
+import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
@@ -18,13 +27,15 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.terminal.data.Bar
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.terminal.R
 import kotlin.math.roundToInt
 
 
@@ -33,32 +44,87 @@ private const val MIN_VISIBLE_COUNT_BARS = 20
 
 @Composable
 fun Terminal(
-    modifier: Modifier = Modifier,
-    bars: List<Bar>
+    modifier: Modifier = Modifier
 ) {
+    val viewModel: TerminalViewModel = viewModel()
+    val screenState = viewModel.state.collectAsState()
 
-    var terminalState by rememberTerminalState(bars = bars)
-
-
-    Chart(
-        modifier = modifier,
-        terminalState = terminalState,
-        onTerminalChangeState = {
-            terminalState = it
+    when (val currentState = screenState.value) {
+        is TerminalScreenState.Loading -> {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(color = Color.Red)
+            }
         }
-    )
+
+        is TerminalScreenState.Initial -> {
+
+        }
+
+        is TerminalScreenState.Content -> {
+            val terminalState = rememberTerminalState(bars = currentState.barList)
+
+            Chart(
+                modifier = modifier,
+                terminalState = terminalState,
+                onTerminalChangeState = {
+                    terminalState.value = it
+                }
+            )
 
 
-    bars.firstOrNull()?.let {
-        Log.d("Terminal", "$it")
-        Prices(
-            modifier = modifier,
-            max = terminalState.max,
-            min = terminalState.min,
-            pxPerPoint = terminalState.pxPerPoint,
-            lastPrice = it.close
-        )
+            currentState.barList.firstOrNull()?.let {
+                Log.d("Terminal", "$it")
+                Prices(
+                    modifier = modifier,
+                    terminalState = terminalState,
+                    lastPrice = it.close
+                )
 
+            }
+
+            TimeFrames(
+                selectedFrame = currentState.timeFrame,
+                onTimeFrameSelected = { viewModel.loadBarList(it) }
+            )
+        }
+    }
+
+
+}
+
+@Composable
+private fun TimeFrames(
+    selectedFrame: TimeFrame,
+    onTimeFrameSelected: (TimeFrame) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .wrapContentSize()
+            .padding(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        TimeFrame.entries.forEach { timeFrame ->
+            val labelResId = when (timeFrame) {
+                TimeFrame.MIN_5 -> R.string.timeframe_5_minute
+                TimeFrame.MIN_15 -> R.string.timeframe_15_minute
+                TimeFrame.MIN_30 -> R.string.timeframe_30_minute
+                TimeFrame.HOUR_1 -> R.string.timeframe_1_hour
+            }
+            val isSelected = selectedFrame == timeFrame
+            AssistChip(
+                onClick = { onTimeFrameSelected(timeFrame) },
+                label = { Text(text = stringResource(id = labelResId)) },
+                colors = AssistChipDefaults.assistChipColors(
+                    containerColor = if (isSelected) Color.White else Color.Black,
+                    labelColor = if (isSelected) Color.Black else Color.White
+                )
+            )
+        }
     }
 
 }
@@ -66,12 +132,15 @@ fun Terminal(
 @Composable
 private fun Prices(
     modifier: Modifier = Modifier,
-    max: Float,
-    min: Float,
-    pxPerPoint: Float,
-    lastPrice: Float,
+    terminalState: State<TerminalState>,
+    lastPrice: Float
 ) {
+    val currentState = terminalState.value
     val textMeasurer = rememberTextMeasurer()
+
+    val max = currentState.max
+    val min = currentState.min
+    val pxPerPoint = currentState.pxPerPoint
 
     Canvas(
         modifier = modifier
@@ -87,20 +156,21 @@ private fun Prices(
 @Composable
 private fun Chart(
     modifier: Modifier = Modifier,
-    terminalState: TerminalState,
+    terminalState: State<TerminalState>,
     onTerminalChangeState: (TerminalState) -> Unit
 
 ) {
+    val currentState = terminalState.value
     val transformableState = rememberTransformableState { zoomChange, panChange, _ ->
-        val visibleBarsCount = (terminalState.visibleBarsCount / zoomChange).roundToInt()
-            .coerceIn(MIN_VISIBLE_COUNT_BARS, terminalState.barList.size)
+        val visibleBarsCount = (currentState.visibleBarsCount / zoomChange).roundToInt()
+            .coerceIn(MIN_VISIBLE_COUNT_BARS, currentState.barList.size)
 
-        val scrolledBy = (terminalState.scrolledBy + panChange.x)
+        val scrolledBy = (currentState.scrolledBy + panChange.x)
             .coerceAtLeast(-15f)
-            .coerceAtMost(terminalState.barWidth * terminalState.barList.size - terminalState.terminalWidth)
+            .coerceAtMost(currentState.barWidth * currentState.barList.size - currentState.terminalWidth)
 
         onTerminalChangeState(
-            terminalState.copy(
+            currentState.copy(
                 visibleBarsCount = visibleBarsCount,
                 scrolledBy = scrolledBy
             )
@@ -118,7 +188,7 @@ private fun Chart(
             .transformable(transformableState)
             .onSizeChanged {
                 onTerminalChangeState(
-                    terminalState.copy(
+                    currentState.copy(
                         terminalWidth = it.width.toFloat(),
                         terminalHeight = it.height.toFloat()
                     )
@@ -126,11 +196,11 @@ private fun Chart(
             }
 
     ) {
-        val min = terminalState.min
-        val pxPerPoint = terminalState.pxPerPoint
-        translate(left = terminalState.scrolledBy) {
-            terminalState.barList.forEachIndexed { index, bar ->
-                val offsetX = size.width - index * terminalState.barWidth
+        val min = currentState.min
+        val pxPerPoint = currentState.pxPerPoint
+        translate(left = currentState.scrolledBy) {
+            currentState.barList.forEachIndexed { index, bar ->
+                val offsetX = size.width - index * currentState.barWidth
                 drawLine(
                     color = Color.White,
                     start = Offset(offsetX, size.height - (bar.low - min) * pxPerPoint),
@@ -141,7 +211,7 @@ private fun Chart(
                     color = if (bar.open > bar.close) Color.Red else Color.Green,
                     start = Offset(offsetX, size.height - (bar.open - min) * pxPerPoint),
                     end = Offset(offsetX, size.height - (bar.close - min) * pxPerPoint),
-                    strokeWidth = terminalState.barWidth / 2
+                    strokeWidth = currentState.barWidth / 2
                 )
             }
         }
