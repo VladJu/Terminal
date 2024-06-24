@@ -16,7 +16,12 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.terminal.data.Bar
 import kotlin.math.roundToInt
 
@@ -43,11 +48,15 @@ fun Terminal(bars: List<Bar>) {
 
     }
 
+    //1)
+    // Занимается вычислениями измерения текста
+    val textMeasurer = rememberTextMeasurer()
+
     Canvas(
         modifier = Modifier
             .fillMaxSize()
-            .padding(top = 32.dp, bottom = 32.dp)
             .background(Color.Black)
+            .padding(top = 32.dp, bottom = 32.dp)
             .transformable(transformableState)
             .onSizeChanged {
                 terminalState = terminalState.copy(terminalWidth = it.width.toFloat())
@@ -77,38 +86,84 @@ fun Terminal(bars: List<Bar>) {
 
         bars.firstOrNull()?.let {
             drawPrices(
+                max = max,
                 min = min,
                 pxPerPoint = pxPerPoint,
-                lastPrice = it.close
+                lastPrice = it.close,
+                textMeasurer = textMeasurer
             )
         }
-
-
     }
 }
 
 
 private fun DrawScope.drawPrices(
+    max: Float,
     min: Float,
     pxPerPoint: Float,
-    lastPrice: Float
+    lastPrice: Float,
+    textMeasurer: TextMeasurer
 ) {
     //max
+    val maxPriceOffsetY =0f
     drawDashLine(
-        start = Offset(0f, 0f),
-        end = Offset(size.width, 0f),
+    start = Offset(0f, maxPriceOffsetY),
+        end = Offset(size.width, maxPriceOffsetY),
     )
+    drawTextPrice(
+        textMeasurer=textMeasurer,
+        price = max,
+        offsetY = maxPriceOffsetY
+    )
+
 
     //last price
+    val lastPriceOffsetY =size.height - (lastPrice - min) * pxPerPoint
     drawDashLine(
-        start = Offset(0f, size.height - (lastPrice - min) * pxPerPoint),
-        end = Offset(size.width, size.height - (lastPrice - min) * pxPerPoint)
+        start = Offset(0f, lastPriceOffsetY),
+        end = Offset(size.width, lastPriceOffsetY)
+    )
+    drawTextPrice(
+        textMeasurer=textMeasurer,
+        price = max,
+        offsetY = lastPriceOffsetY
     )
 
+
     //min
+    val minPriceOffsetY = size.height
     drawDashLine(
-        start = Offset(0f, size.height),
-        end = Offset(size.width, size.height)
+        start = Offset(0f, minPriceOffsetY),
+        end = Offset(size.width, minPriceOffsetY)
+    )
+    drawTextPrice(
+        textMeasurer=textMeasurer,
+        price = min,
+        offsetY = minPriceOffsetY
+    )
+}
+
+private fun DrawScope.drawTextPrice(
+    textMeasurer: TextMeasurer,
+    price : Float,
+    offsetY:Float
+) {
+    //называется result потому что получить можно в результата измерений такого текста который
+    //хотим отрисовать
+    //Есть объект который произведет все необходимые вычисления и когда будем знать результат,
+    //знать все размеры текста(шрифт, цвет и тд),то drawText сможет отобразить этот текст на Экр
+    //2)
+    //Получаем результат вычислений
+    val textLayoutResult = textMeasurer.measure(
+        text = price.toString(),
+        style = TextStyle(
+            color = Color.White,
+            fontSize = 12.sp
+        )
+    )
+    drawText(
+        textLayoutResult = textLayoutResult,
+        topLeft = Offset(size.width - textLayoutResult.size.width, offsetY)
     )
 }
 
